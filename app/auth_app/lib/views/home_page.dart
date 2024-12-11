@@ -10,8 +10,31 @@ class HomePage extends StatelessWidget {
   final user = FirebaseAuth.instance.currentUser!;
   final ChatProvider chatProvider = ChatProvider(firebaseFirestore: FirebaseFirestore.instance);
 
-  void signUserOut() async {
-    await FirebaseAuth.instance.signOut();
+  void signUserOut(BuildContext context) async {
+    final confirm = await showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Sair'),
+          content: const Text('Você tem certeza que deseja sair?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Sair'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm == true) {
+      await FirebaseAuth.instance.signOut();
+      Navigator.pushReplacementNamed(context, '/login'); // Ajuste para sua rota de login
+    }
   }
 
   void _addContact(BuildContext context) {
@@ -56,6 +79,70 @@ class HomePage extends StatelessWidget {
     );
   }
 
+  void _editContactDialog(
+      BuildContext context, String contactId, String currentName) {
+    final nameController = TextEditingController(text: currentName);
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Editar Contato'),
+          content: TextField(
+            controller: nameController,
+            decoration: const InputDecoration(labelText: 'Novo Nome'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancelar'),
+            ),
+            TextButton(
+              onPressed: () async {
+                final newName = nameController.text.trim();
+                if (newName.isNotEmpty) {
+                  await chatProvider.editContact(
+                    userId: user.uid,
+                    contactId: contactId,
+                    newContactName: newName,
+                  );
+                  Navigator.pop(context);
+                }
+              },
+              child: const Text('Salvar'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _deleteContact(BuildContext context, String contactId) async {
+    final confirm = await showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Excluir Contato'),
+          content: const Text('Tem certeza que deseja excluir este contato?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Excluir'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm == true) {
+      await chatProvider.deleteContact(userId: user.uid, contactId: contactId);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -67,6 +154,10 @@ class HomePage extends StatelessWidget {
           IconButton(
             onPressed: () => _addContact(context),
             icon: const Icon(Icons.add),
+          ),
+          IconButton(
+            onPressed: () => signUserOut(context),
+            icon: const Icon(Icons.logout),
           ),
         ],
       ),
@@ -85,6 +176,7 @@ class HomePage extends StatelessWidget {
               itemCount: contacts.length,
               itemBuilder: (context, index) {
                 final contact = contacts[index];
+                final contactId = contact.id;
                 final contactName = contact['name'] as String;
                 final chatId = contact['chatId'] as String;
 
@@ -94,8 +186,8 @@ class HomePage extends StatelessWidget {
                       context,
                       MaterialPageRoute(
                         builder: (context) => ChatPage(
-                          chatId: 'chatId_$index', // ID único do chat
-                          chatName: 'Contato $index',
+                          chatId: chatId,
+                          chatName: contactName,
                         ),
                       ),
                     );
@@ -113,7 +205,25 @@ class HomePage extends StatelessWidget {
                       ),
                       title: Text(contactName),
                       subtitle: const Text('Toque para iniciar a conversa'),
-                      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                      trailing: PopupMenuButton<String>(
+                        onSelected: (value) {
+                          if (value == 'edit') {
+                            _editContactDialog(context, contactId, contactName);
+                          } else if (value == 'delete') {
+                            _deleteContact(context, contactId);
+                          }
+                        },
+                        itemBuilder: (context) => [
+                          const PopupMenuItem(
+                            value: 'edit',
+                            child: Text('Editar'),
+                          ),
+                          const PopupMenuItem(
+                            value: 'delete',
+                            child: Text('Excluir'),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 );
